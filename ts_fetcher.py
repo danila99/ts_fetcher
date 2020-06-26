@@ -53,24 +53,22 @@ class VideoChunk(object):
 
 
 def prepare_base_url(url):
-    return re.sub("\/\w+\.ts", "/", url)
+    return re.sub("/\w+\.ts", "/", url)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Download all *.ts files for remote video resource"
-    )
-    parser.add_argument('url', help="URL part before '{index}.ts'", type=str)
+    parser = argparse.ArgumentParser(description="Download all *.ts files for remote video resource")
     parser.add_argument('folder', help="destination folder", default=".", type=str)
-    parser.add_argument('url_postfix', help="URL part after '{index}.ts' (optional)", default="", type=str)
+    parser.add_argument('url', help="URL pattern for video chunks, example: http://any.com/any/any{i.ts}?any. " \
+                                    "{i.ts} stub should be where '{index}.ts' part of the url is", type=str)
     args = parser.parse_args()
 
     if not os.path.exists(args.folder):
         os.makedirs(args.folder)
 
     base_folder = args.folder
-    base_url = prepare_base_url(args.url)
-    video_chunk = VideoChunk(base_url, args.url_postfix)
+    base_url, *url_postfix = prepare_base_url(args.url).split("{i.ts}")
+    video_chunk = VideoChunk(base_url, url_postfix[0] if url_postfix else "")
 
     print(f"will download from: {video_chunk.url(1)}")
     print(f"will write to: {base_folder}")
@@ -98,8 +96,7 @@ if __name__ == "__main__":
     print(f"creating {file_list_name}...")
     with open(file_list_name, "w") as text_file:
         for index in all_indices:
-            print(f"file {index}.ts", file=text_file)
+            print(f"file '{os.path.join(base_folder, str(index))}.ts'", file=text_file)
 
-    print("done. Now proceed with the following shell commands:")
-    print(f'> cd "{base_folder}"')
-    print("> ffmpeg -f concat -i _filelist.txt -c copy output.mp4")
+    print("done. Now proceed with the following shell command:")
+    print(f"> ffmpeg -safe 0 -f concat -i {os.path.join(base_folder, '_filelist.txt')} -c copy {os.path.join(base_folder, 'output.mp4')}")
