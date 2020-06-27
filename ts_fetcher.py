@@ -10,12 +10,13 @@ MAX_WORKERS = 32
 
 
 class VideoChunk(object):
-    def __init__(self, base_url, postfix_url):
+    def __init__(self, base_url, postfix_url, pad):
         self.base = base_url
         self.postfix = postfix_url
+        self.pad = pad
 
     def url(self, i):
-        return f"{self.base}{i}.ts{self.postfix}"
+        return f"{self.base}{str(i).zfill(self.pad)}.ts{self.postfix}"
 
     def exists(self, i):
         url = self.url(i)
@@ -47,28 +48,39 @@ class VideoChunk(object):
         url = self.url(i)
         # TODO: treat unexpected HTTP exceptions here
         with urllib.request.urlopen(url) as response, open(file_name, 'wb') as out_file:
-            print(f"writing to: {file_name}...")
+            # print(f"writing to: {file_name}...")
             shutil.copyfileobj(response, out_file)
             return f"done: {file_name}"
 
 
-def prepare_base_url(url):
-    return re.sub("/\w+\.ts", "/", url)
+def analyze_url(full_url):
+    if "{i.ts}" in full_url:
+        base, *postfix = url.split("{i.ts}")
+        return base, postfix[0] if postfix else ""
+    else:
+        regex = r"(?P<url>.+?)\d+\.ts(?P<url_postfix>.*)"
+        matches = re.search(regex, full_url)
+        return matches.group("url"), matches.group("url_postfix")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Download all *.ts files for remote video resource")
-    parser.add_argument('folder', help="destination folder", default=".", type=str)
-    parser.add_argument('url', help="URL pattern for video chunks, example: http://any.com/any/any{i.ts}?any. " \
-                                    "{i.ts} stub should be where '{index}.ts' part of the url is", type=str)
+    parser.add_argument("folder", help="destination folder", default=".", type=str)
+    parser.add_argument("url", help="URL pattern for video chunks, example: http://any.com/any/any0.ts?any. " \
+                                    "'0.ts' should be present, or replace it with '{i.ts}' stub where '{index}.ts' " \
+                                    "part of the url is", type=str)
+    parser.add_argument("-p", "--pad",
+                        help="pad index with zeros, i.e. use -p 5 to generate 00001.ts in a video chunk url",
+                        type=int,
+                        default=0)
     args = parser.parse_args()
 
     if not os.path.exists(args.folder):
         os.makedirs(args.folder)
 
     base_folder = args.folder
-    base_url, *url_postfix = prepare_base_url(args.url).split("{i.ts}")
-    video_chunk = VideoChunk(base_url, url_postfix[0] if url_postfix else "")
+    base_url, url_postfix = analyze_url(args.url)
+    video_chunk = VideoChunk(base_url, url_postfix, args.pad)
 
     print(f"will download from: {video_chunk.url(1)}")
     print(f"will write to: {base_folder}")
@@ -99,4 +111,5 @@ if __name__ == "__main__":
             print(f"file '{os.path.join(base_folder, str(index))}.ts'", file=text_file)
 
     print("done. Now proceed with the following shell command:")
-    print(f"> ffmpeg -safe 0 -f concat -i {os.path.join(base_folder, '_filelist.txt')} -c copy {os.path.join(base_folder, 'output.mp4')}")
+    print(f"> ffmpeg -safe 0 -f concat -i {os.path.join(base_folder, '_filelist.txt')}"
+          f" -c copy {os.path.join(base_folder, 'output.mp4')}")
